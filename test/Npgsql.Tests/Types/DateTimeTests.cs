@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Data;
 using System.Linq;
 using NpgsqlTypes;
@@ -102,12 +103,41 @@ namespace Npgsql.Tests.Types
 
         #region Time
 
+        public static IEnumerable TimeData
+        {
+            get
+            {
+                yield return new TestCaseData(new TimeSpan());
+                yield return new TestCaseData(new TimeSpan(TimeSpan.TicksPerDay + 1));
+                yield return new TestCaseData(new TimeSpan(0, 10, 45, 34, 500));
+            }
+        }
+
         [Test]
-        public void Time()
+        [TestCaseSource(nameof(TimeData))]
+        public void Time(TimeSpan expected)
         {
             using (var conn = OpenConnection())
             {
-                var expected = new TimeSpan(0, 10, 45, 34, 500);
+                using (var cmd = new NpgsqlCommand("CREATE TEMP TABLE some_table ( some_time TIME );", conn))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var cmd = new NpgsqlCommand("INSERT INTO some_table (some_time) VALUES (@p1);", conn))
+                {
+                    cmd.Parameters.AddWithValue("p1", expected);
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var cmd = new NpgsqlCommand("SELECT some_time FROM some_table;", conn))
+                {
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        reader.Read();
+                        Assert.That(reader.GetFieldValue<TimeSpan>(0), Is.EqualTo(expected));
+                    }
+                }
 
                 using (var cmd = new NpgsqlCommand("SELECT @p1, @p2", conn))
                 {
